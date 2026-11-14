@@ -1,0 +1,117 @@
+package com.example.siriassistant
+
+import android.accessibilityservice.AccessibilityService
+import android.app.Service
+import android.content.*
+import android.graphics.PixelFormat
+import android.media.*
+import android.os.IBinder
+import android.speech.tts.TextToSpeech
+import android.view.*
+import android.view.accessibility.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.unit.dp
+import java.util.Locale
+import kotlin.math.sqrt
+
+class SiriVoiceManager(ctx: Context, p: Float = 1.0f, r: Float = 1.0f) {
+    private val rec = AudioRecord(MediaRecorder.AudioSource.MIC, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT))
+    private val tts = TextToSpeech(ctx) { if (it == TextToSpeech.SUCCESS) { tts.language = Locale.getDefault(); tts.setPitch(p); tts.setSpeechRate(r) } }
+
+    fun start(onTrig: () -> Unit) {
+        val buf = ByteArray(1024); rec.startRecording()
+        Thread { while (true) if (rec.read(buf, 0, buf.size) > 0) { onTrig(); break } }.start()
+    }
+    fun speak(txt: String) = tts.speak(txt, TextToSpeech.QUEUE_FLUSH, null, "TTS")
+    fun stop() { tts.stop(); tts.shutdown() }
+}
+
+class ClapDetectorEngine(private val onClap: () -> Unit) {
+    private var lastT = 0L
+    fun process(buf: ShortArray) {
+        val rms = sqrt(buf.sumOf { (it * it).toDouble() } / buf.size)
+        var zc = 0; for (i in 1 until buf.size) if ((buf[i] >= 0) != (buf[i-1] >= 0)) zc++
+        if (rms > 2500.0 && zc.toDouble() / buf.size > 0.15) {
+            val now = System.currentTimeMillis()
+            if (lastT == 0L) lastT = now else if (now - lastT in 200..800) { onClap(); lastT = 0L } else lastT = now
+        }
+    }
+}
+
+class SiriAccessibilityService : AccessibilityService() {
+    private var lastP = 0L
+    override fun onKeyEvent(e: KeyEvent): Boolean {
+        if (e.keyCode == KeyEvent.KEYCODE_POWER && e.action == KeyEvent.ACTION_DOWN) {
+            val now = System.currentTimeMillis()
+            if (now - lastP < 400) { startService(Intent(this, SiriOverlayService::class.java)); lastP = 0L; return true }
+            lastP = now
+        }
+        return super.onKeyEvent(e)
+    }
+    fun readWhatsApp(): String {
+        val sb = StringBuilder()
+        fun trav(n: AccessibilityNodeInfo?) {
+            n ?: return
+            if (n.className == "android.widget.TextView" && !n.text.isNullOrBlank()) sb.append("${n.text}. ")
+            for (i in 0 until n.childCount) trav(n.getChild(i))
+        }
+        trav(rootInActiveWindow); return sb.toString().ifEmpty { "Sin mensajes" }
+    }
+    override fun onAccessibilityEvent(e: AccessibilityEvent?) {}
+    override fun onInterrupt() {}
+}
+
+@Composable
+fun SiriOrbScreen() {
+    val scale by rememberInfiniteTransition(label = "").animateFloat(1f, 1.4f, infiniteRepeatable(tween(600), RepeatMode.Reverse), label = "")
+    Box(Modifier.fillMaxSize(), Alignment.BottomCenter) {
+        Canvas(Modifier.size(120.dp).scale(scale)) { drawCircle(Brush.radialGradient(listOf(Color(0xFF00E5FF), Color(0xFF2979FF), Color(0xFF651FFF)))) }
+    }
+}
+
+class SiriOverlayService : Service() {
+    private lateinit var wm: WindowManager; private lateinit var cv: ComposeView
+    override fun onCreate() {
+        super.onCreate()
+        wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        cv = ComposeView(this).apply { setContent { SiriOrbScreen() } }
+        wm.addView(cv, WindowManager.LayoutParams(-1, -1, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, 24, PixelFormat.TRANSLUCENT))
+    }
+    override fun onBind(i: Intent?): IBinder? = null
+    override fun onDestroy() { if (::cv.isInitialized) wm.removeView(cv); super.onDestroy() }
+}
+
+/*
+--- AndroidManifest.xml ---
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+<uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+<application>
+    <service android:name=".SiriAccessibilityService" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true">
+        <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+        <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service_config" />
+    </service>
+    <service android:name=".SiriOverlayService" android:foregroundServiceType="microphone" android:exported="false" />
+</application>
+
+--- res/xml/accessibility_service_config.xml ---
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeAllMask"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows|flagRequestTouchExplorationMode"
+    android:canRetrieveWindowContent="true"
+    android:canRequestFilterKeyEvents="true"
+    android:description="@string/accessibility_service_description"
+    android:notificationTimeout="100" />
+*/
+
