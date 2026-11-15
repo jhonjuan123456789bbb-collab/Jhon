@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mi Aplicación - Jhon 10</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+      background: #0f172a;
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    /* Pantalla de Contraseña */
+    #login-screen {
+      position: fixed;
+      inset: 0;
+      background: #090d16;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 20px;
+    }
+
+    .login-card {
+      background: #1e293b;
+      padding: 30px;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      text-align: center;
+      max-width: 320px;
+      width: 100%;
+    }
+
+    .login-card h2 {
+      margin-bottom: 20px;
+      color: #38bdf8;
+    }
+
+    .login-card input {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #0f172a;
+      color: #fff;
+      font-size: 16px;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+
+    .login-card button {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: none;
+      background: #0284c7;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .login-card button:hover {
+      background: #0369a1;
+    }
+
+    .error-msg {
+      color: #ef4444;
+      font-size: 14px;
+      margin-top: 10px;
+      display: none;
+    }
+
+    /* Interfaz Principal */
+    #app-content {
+      display: none;
+      width: 100%;
+      height: 100vh;
+      position: relative;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    header {
+      width: 100%;
+      padding: 15px;
+      background: #1e293b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+    }
+
+    header h1 {
+      font-size: 18px;
+      color: #38bdf8;
+    }
+
+    .btn-popup {
+      background: #38bdf8;
+      color: #0f172a;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    /* Área interactiva del juego/canvas */
+    #game-canvas {
+      flex: 1;
+      width: 100%;
+      background: #0f172a;
+      touch-action: none;
+    }
+
+    .stats {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(30, 41, 59, 0.8);
+      padding: 10px 15px;
+      border-radius: 8px;
+      font-size: 12px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- PANTALLA DE ACCESO CON CLAVE -->
+  <div id="login-screen">
+    <div class="login-card">
+      <h2>Acceso Requerido</h2>
+      <input type="password" id="password-input" placeholder="Ingresa la contraseña">
+      <button onclick="checkPassword()">Entrar</button>
+      <p id="error-msg" class="error-msg">Contraseña incorrecta</p>
+    </div>
+  </div>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <div id="app-content">
+    <header>
+      <h1>App Movimiento Vertical</h1>
+      <button class="btn-popup" onclick="openPopup()">Pantalla Flotante</button>
+    </header>
+
+    <canvas id="game-canvas"></canvas>
+
+    <div class="stats">
+      <p>Modo: <span id="orientation-label">Vertical</span></p>
+      <p>Velocidad X: <span id="speed-x">Rápida</span></p>
+      <p>Velocidad Y: <span id="speed-y">Pegada</span></p>
+    </div>
+  </div>
+
+  <script>
+    // 1. Verificación de Contraseña (jhon10)
+    function checkPassword() {
+      const input = document.getElementById('password-input').value.trim().toLowerCase();
+      const error = document.getElementById('error-msg');
+      
+      if (input === 'jhon10') {
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('app-content').style.display = 'flex';
+        initApp();
+      } else {
+        error.style.display = 'block';
+      }
+    }
+
+    // Permitir presionar Enter en el input
+    document.getElementById('password-input').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') checkPassword();
+    });
+
+    // 2. Abrir en Pantalla Emergente (Pop-up)
+    function openPopup() {
+      window.open(window.location.href, 'AppEmergente', 'width=420,height=700,resizable=yes,scrollbars=no');
+    }
+
+    // 3. Lógica de Movimiento y Giroscopio
+    function initApp() {
+      const canvas = document.getElementById('game-canvas');
+      const ctx = canvas.getContext('2d');
+
+      function resizeCanvas() {
+        canvas.width = canvas.clientWidth;
+        canvas.height = canvas.clientHeight;
+      }
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+
+      // Posición de la esfera interactiva
+      let posX = canvas.width / 2;
+      let posY = canvas.height / 2;
+      let velX = 0;
+      let velY = 0;
+      const radius = 25;
+
+      // Variables de inclinación
+      let tiltGamma = 0; // Izquierda / Derecha (-90 a 90)
+      let tiltBeta = 0;  // Adelante / Atrás (-180 a 180)
+
+      // Solicitar permiso de movimiento en dispositivos iOS / Android si es necesario
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission().then(response => {
+          if (response === 'granted') {
+            window.addEventListener('deviceorientation', handleOrientation);
+          }
+        });
+      } else {
+        window.addEventListener('deviceorientation', handleOrientation);
+      }
+
+      function handleOrientation(e) {
+        tiltGamma = e.gamma || 0;
+        tiltBeta = e.beta || 0;
+      }
+
+      // Ciclo principal de renderizado
+      function update() {
+        const isPortrait = window.innerHeight > window.innerWidth;
+        
+        // Multiplicadores según orientación requerida:
+        // En vertical: lados (X) más rápido, arriba/abajo (Y) más pegado/lento
+        let factorX = isPortrait ? 0.8 : 0.4;
+        let factorY = isPortrait ? 0.15 : 0.4;
+
+        velX = tiltGamma * factorX;
+        velY = (tiltBeta - 45) * factorY; // 45° como punto de descanso natural
+
+        posX += velX;
+        posY += velY;
+
+        // Limites de pantalla (colisiones)
+        if (posX - radius < 0) posX = radius;
+        if (posX + radius > canvas.width) posX = canvas.width - radius;
+        if (posY - radius < 0) posY = radius;
+        if (posY + radius > canvas.height) posY = canvas.height - radius;
+
+        // Dibujar
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Fondo/Rejilla de fondo
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < canvas.width; x += 40) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, canvas.height);
+          ctx.stroke();
+        }
+        for (let y = 0; y < canvas.height; y += 40) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(canvas.width, y);
+          ctx.stroke();
+        }
+
+        // Dibujar objeto jugable
+        ctx.beginPath();
+        ctx.arc(posX, posY, radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#38bdf8';
+        ctx.shadowColor = '#0284c7';
+        ctx.shadowBlur = 15;
+        ctx.fill();
+        ctx.closePath();
+
+        // Actualizar estadísticas en pantalla
+        document.getElementById('orientation-label').innerText = isPortrait ? 'Vertical' : 'Horizontal';
+        document.getElementById('speed-x').innerText = isPortrait ? 'Rápida' : 'Normal';
+        document.getElementById('speed-y').innerText = isPortrait ? 'Pegada / Lenta' : 'Normal';
+
+        requestAnimationFrame(update);
+      }
+
+      requestAnimationFrame(update);
+    }
+  </script>
+</body>
+</html
